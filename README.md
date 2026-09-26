@@ -15,9 +15,10 @@ This is an interactive concept mockup. It does not demonstrate completed hardwar
 
 ## Run locally
 
-Requires Node.js 22.12+ or 24+ and npm.
+The app lives in `web/`. Requires Node.js 22.12+ or 24+ and npm.
 
 ```sh
+cd web
 npm ci
 npm run dev
 ```
@@ -38,10 +39,10 @@ Three.js renders geometry behind a fixed virtual screen. The camera translates w
 
 MediaPipe Face Landmarker runs only after Camera is selected. Video and landmarks remain in the browser; there is no backend, recording, analytics, or upload. The model and WebAssembly runtime are served from this site. Fonts load from Google Fonts, with system fonts as fallback.
 
-The runtime files are copied from the pinned npm package by the `predev` and `prebuild` scripts. The face model is checked into `public/models/face_landmarker.task` from Google's [published model](https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task). See the [MediaPipe documentation](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) and its terms for model use.
+The runtime files are copied from the pinned npm package by the `predev` and `prebuild` scripts. The face model is checked into `web/public/models/face_landmarker.task` from Google's [published model](https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task). See the [MediaPipe documentation](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) and its terms for model use.
 
 ## GitHub Pages
 
-Set **Settings → Pages → Source** to **GitHub Actions**. Pushes to `main` run the tests, build the site, and publish `dist` with the included workflow. Relative asset URLs support the repository path `/p.o.r.t.a.l./` and local previews.
+Set **Settings → Pages → Source** to **GitHub Actions**. Pushes to `main` run the tests and build from `web/`, then publish `web/dist` with the included workflow. Relative asset URLs support the repository path `/p.o.r.t.a.l./` and local previews.
 
 The two scenes use procedural geometry and materials created for this demo. Dependencies remain under their respective licenses.
