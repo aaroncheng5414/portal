@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><base href="/"><title>Portal camera runtime test</title></head><body>
+<h1>Camera runtime test</h1><p>This development-only page uses an animated canvas as a camera. It does not open any physical camera.</p>
+<button id="run">Run synthetic video test</button><button id="stop">Stop test</button><p id="status" role="status">Ready</p>
+<canvas id="source" width="640" height="480"></canvas><video id="video" autoplay muted playsinline width="320"></video>
+<script type="module">
+import { createHeadTracker } from '/src/tracking.js';
+const source = document.querySelector('#source');
+const ctx = source.getContext('2d');
+let i = 0;
+const draw = () => { ctx.fillStyle = '#cdd3bd';ctx.fillRect(0,0,640,480);ctx.fillStyle = '#365947';ctx.fillRect(100+Math.sin(i++/15)*50,100,100,100);requestAnimationFrame(draw); };
+draw();
+let activeStream;
+Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {configurable:true,value:async () => { activeStream = source.captureStream(20);return activeStream; }});
+const tracker = createHeadTracker({video:document.querySelector('#video'),onStatus:({state,message}) => { document.querySelector('#status').textContent = `${state}: ${message}`; document.querySelector('#status').dataset.state = state; }});
+document.querySelector('#run').onclick = async () => { const started = await tracker.start();document.body.dataset.started = String(started); };
+document.querySelector('#stop').onclick = () => { tracker.stop();document.body.dataset.stopped = String(activeStream?.getTracks().every(t=>t.readyState==='ended')); };
+</script></body></html>
