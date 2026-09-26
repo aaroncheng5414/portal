@@ -1,6 +1,5 @@
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 
-const FRAME_INTERVAL_MS = 50;
 const LOST_AFTER_MS = 650;
 const CENTERING_FRAMES = 5;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -123,8 +122,7 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
   function tick(context, now) {
     if (!isCurrent(context)) return;
     if (document.visibilityState !== 'hidden' && video.readyState >= 2 &&
-        video.currentTime !== context.lastVideoTime && now - context.lastFrame >= FRAME_INTERVAL_MS) {
-      context.lastFrame = now;
+        video.currentTime !== context.lastVideoTime) {
       context.lastVideoTime = video.currentTime;
       try {
         const result = context.landmarker.detectForVideo(video, now);
@@ -135,7 +133,7 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
           if (!context.baseline) {
             context.samples.push(face);
             if (context.samples.length < CENTERING_FRAMES) {
-              status('loading', 'Hold still for a moment to center the view.');
+              status('loading', 'Hold still to center the view.');
             } else {
               context.baseline = averageFaces(context.samples);
               context.samples = [];
@@ -143,11 +141,11 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
           }
           if (context.baseline) {
             onPosition(estimateViewerPosition(face, context.baseline));
-            status('tracking', 'Following your head. Move side to side and closer to the screen.');
+            status('tracking', 'Following your head.');
           }
         } else if (now - context.lastSeen > LOST_AFTER_MS) {
           context.samples = [];
-          status('lost', 'Face out of view. Look toward the camera to continue.');
+          status('lost', 'Face out of view. Look toward the camera.');
         }
       } catch (error) {
         fail(context, error, 'inference');
@@ -188,7 +186,7 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
       if (!isCurrent(context)) return false;
 
       stage = 'model';
-      status('loading', 'Loading face tracking on this device…');
+      status('loading', 'Loading face tracker…');
       const vision = await FilesetResolver.forVisionTasks(`${base}wasm`);
       if (!isCurrent(context)) return false;
       const options = (delegate) => ({
@@ -215,7 +213,7 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
       context.landmarker = landmarker;
       context.running = true;
       context.lastSeen = performance.now();
-      status('lost', 'Look toward the camera to center the view.');
+      status('lost', 'Look toward the camera to center.');
       context.raf = requestAnimationFrame((time) => tick(context, time));
       return true;
     } catch (error) {
@@ -230,7 +228,7 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
       const context = {
         abort: new AbortController(), disposed: false, running: false, stream: null,
         landmarker: null, raf: 0, baseline: null, samples: [], lastFace: null,
-        lastSeen: 0, lastVideoTime: -1, lastFrame: -Infinity, promise: null,
+        lastSeen: 0, lastVideoTime: -1, promise: null,
       };
       current = context;
       context.promise = initialize(context);
@@ -240,19 +238,19 @@ export function createHeadTracker({ video, onPosition = () => {}, onStatus = () 
       const context = current;
       current = null;
       dispose(context);
-      status('idle', 'Camera off. Move the cursor to explore.');
+      status('idle', 'Camera off. Cursor ready.');
     },
     calibrate() {
       if (!current?.running) return false;
       if (!current.lastFace || performance.now() - current.lastSeen > LOST_AFTER_MS) {
         current.baseline = null;
         current.samples = [];
-        status('lost', 'Look toward the camera to center the view.');
+        status('lost', 'Look toward the camera to center.');
         return false;
       }
       current.baseline = { ...current.lastFace };
       onPosition({ x: 0, y: 0, z: 1 });
-      status('tracking', 'View centered. Move your head to explore.');
+      status('tracking', 'View centered.');
       return true;
     },
     get running() { return Boolean(current?.running); },

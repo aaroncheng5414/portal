@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f3ed" />
-    <meta name="description" content="Look through P.O.R.T.A.L. A browser prototype of a perspective-aware window. Move your cursor or use your camera to look into a virtual world." />
-    <title>P.O.R.T.A.L. — A different point of view</title>
+    <meta name="description" content="Portal 3D window demo. Control the viewpoint with your cursor or webcam." />
+    <title>Portal demo</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   </head>
   <body>
@@ -16,13 +16,13 @@
 
     <main>
       <section class="intro" aria-labelledby="page-title">
-        <div><div class="eyebrow"><span class="small-line"></span> A PERSPECTIVE EXPERIMENT</div><h1 id="page-title">A different<br /><em>point of view.</em></h1></div>
-        <div class="intro-copy"><p>More than a screen.<br />A window into somewhere else.</p><p class="muted">Move your cursor to look around. The frame stays still.<br class="desktop-break" /> The world beyond it shifts with you.</p></div>
+        <h1 id="page-title">Portal demo</h1>
+        <div class="intro-copy"><p>Move your cursor or use your webcam to change the view.</p><p class="muted">The frame stays fixed as the 3D scene shifts.</p></div>
       </section>
 
       <section class="experience" aria-label="Interactive Portal demonstration">
         <div class="portal-area">
-          <div class="scene-toolbar"><div class="scene-tabs" role="group" aria-label="Choose a scene"><button class="scene-tab selected" data-scene="gallery" aria-pressed="true"><span class="scene-number">01</span> The gallery</button><button class="scene-tab" data-scene="landscape" aria-pressed="false"><span class="scene-number">02</span> Open landscape</button></div><span class="live-label"><span></span> LIVE 3D</span></div>
+          <div class="scene-toolbar"><div class="scene-tabs" role="group" aria-label="Choose a scene"><button class="scene-tab selected" data-scene="gallery" aria-pressed="true">Gallery</button><button class="scene-tab" data-scene="landscape" aria-pressed="false">Landscape</button></div><span class="live-label"><span></span> LIVE 3D</span></div>
           <div class="stage" id="stage">
             <div class="device">
               <div class="device-top"><span class="lens" aria-hidden="true"></span></div>
@@ -31,28 +31,26 @@
             </div>
             <div class="stage-shadow" aria-hidden="true"></div>
           </div>
-          <div class="stage-footer"><span id="scene-caption">A quiet gallery. A new angle.</span><button id="fullscreen-button" class="text-button" aria-label="Enter fullscreen">Expand view <span aria-hidden="true">⤢</span></button></div>
+          <div class="stage-footer"><span id="scene-caption">Gallery</span><button id="fullscreen-button" class="text-button" aria-label="Enter fullscreen">Fullscreen <span aria-hidden="true">⤢</span></button></div>
         </div>
 
         <aside class="controls" aria-label="View controls">
-          <div class="control-heading"><span class="eyebrow">YOUR POINT OF VIEW</span><span class="control-index">↗</span></div>
-          <h2>Make a move.</h2><p class="control-description">Explore with your cursor, or let the window follow your head.</p>
+          <h2>Controls</h2><p class="control-description">Camera mode follows your head.</p>
           <div class="input-modes" role="group" aria-label="Input mode"><button id="pointer-button" class="mode-button selected" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 14 10-7 1-3 7Z" /></svg>Cursor</button><button id="camera-button" class="mode-button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3Z"/></svg>Camera</button></div>
 
           <div class="view-map" aria-hidden="true"><span class="map-axis-x"></span><span class="map-axis-y"></span><span class="map-orbit"></span><span class="map-dot" id="map-dot"></span><span class="map-center"></span><span class="map-label">VIEWER POSITION</span></div>
-          <div class="tracking-status" role="status" aria-live="polite"><span class="status-dot" id="status-dot"></span><span id="status-text">Cursor control is ready</span></div>
+          <div class="tracking-status" role="status" aria-live="polite"><span class="status-dot" id="status-dot"></span><span id="status-text">Cursor active</span></div>
 
           <div class="camera-preview" id="camera-preview" hidden><video id="camera-video" autoplay muted playsinline aria-label="Local camera preview"></video><span>LOCAL CAMERA PREVIEW</span></div>
-          <div class="camera-actions" id="camera-actions" hidden><button class="secondary-button" id="calibrate-button" disabled>Center my view</button><p class="privacy-note">Video stays on your device. Nothing is recorded or uploaded. Head position is an approximation.</p></div>
+          <div class="camera-actions" id="camera-actions" hidden><button class="secondary-button" id="calibrate-button" disabled>Center view</button><p class="privacy-note">Video stays on your device. Head position is approximate.</p></div>
 
           <div class="slider-row"><div><label for="sensitivity">Movement</label><output id="sensitivity-output" for="sensitivity">1.0×</output></div><input id="sensitivity" type="range" min="0.4" max="1.6" step="0.1" value="1" /></div>
           <div class="slider-row" id="distance-control"><div><label for="distance">Viewing distance</label><output id="distance-output" for="distance">Natural</output></div><input id="distance" type="range" min="0.7" max="1.5" step="0.05" value="1" /></div>
           <div class="action-row"><button id="demo-button" class="primary-button"><span id="play-icon" aria-hidden="true">▷</span><span id="demo-label">Play demo</span></button><button id="reset-button" class="reset-button" aria-label="Reset viewpoint" title="Reset viewpoint">↺</button></div>
-          <p class="input-help" id="input-help">You can also focus the window and use the arrow keys. Drag to explore on a phone.</p>
+          <p class="input-help" id="input-help">Drag on touch. Focus the scene to use arrow keys.</p>
         </aside>
       </section>
 
-      <section class="explanation" aria-label="How Portal works"><div class="concept-label"><span class="eyebrow">THE IDEA</span><h2>A little movement.<br />A whole new perspective.</h2></div><div class="concept-step"><span class="step-number">01 / SENSE</span><h3>Find your viewpoint</h3><p>Your cursor or camera estimates where you are relative to the window.</p></div><div class="concept-step"><span class="step-number">02 / SHIFT</span><h3>Look past the frame</h3><p>Near and far objects move differently, revealing the depth inside the scene.</p></div><div class="concept-step"><span class="step-number">03 / EXPERIENCE</span><h3>See a window, not a wall</h3><p>A fixed frame becomes a small opening into a much bigger space.</p></div></section>
     </main>
     <footer><span>P.O.R.T.A.L. <span class="footer-divider">/</span> ECE 364D</span><span>Interactive concept demo <span class="footer-divider">·</span> Hardware in development</span></footer>
     <script type="module" src="./src/main.js"></script>

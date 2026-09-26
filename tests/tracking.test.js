@@ -87,6 +87,35 @@ function browserFixture(t) {
   return { mediaDevices, video, tracker, frames, statuses };
 }
 
+test('each fresh 30 fps video frame is processed while duplicate render frames are skipped', async (t) => {
+  const { mediaDevices, video, tracker, frames } = browserFixture(t);
+  const stream = makeStream(t);
+  const model = makeModel(t);
+  const processedVideoTimes = [];
+  model.detectForVideo = t.mock.fn((frame) => {
+    processedVideoTimes.push(frame.currentTime);
+    return { faceLandmarks: [] };
+  });
+  mediaDevices.getUserMedia = async () => stream;
+  t.mock.method(FaceLandmarker, 'createFromOptions', async () => model);
+  assert.equal(await tracker.start(), true);
+
+  // A 60 Hz display renders twice for every fresh frame from the 30 fps camera.
+  for (let renderFrame = 0; renderFrame < 6; renderFrame++) {
+    video.currentTime = Math.floor(renderFrame / 2) / 30;
+    assert.equal(frames.size, 1);
+    const [id, callback] = frames.entries().next().value;
+    frames.delete(id);
+    callback(1000 + renderFrame * (1000 / 60));
+  }
+  assert.deepEqual(processedVideoTimes, [0, 1 / 30, 2 / 30]);
+
+  tracker.stop();
+  assert.equal(model.close.mock.callCount(), 1);
+  assert.equal(stream.track.stop.mock.callCount(), 1);
+  assert.equal(frames.size, 0);
+});
+
 test('a camera permission result arriving after stop cannot replace the new session', async (t) => {
   const { mediaDevices, video, tracker, frames } = browserFixture(t);
   const permission = deferred();

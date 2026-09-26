@@ -31,7 +31,7 @@ function setDemo(active) {
   $('demo-label').textContent = active ? 'Pause demo' : 'Play demo';
   $('play-icon').textContent = active ? 'Ⅱ' : '▷';
   $('demo-button').setAttribute('aria-pressed', String(active));
-  if (mode === 'pointer') showStatus(active ? 'A slow look around' : 'Cursor control is ready');
+  if (mode === 'pointer') showStatus(active ? 'Demo playing' : 'Cursor active');
 }
 
 function syncMode() {
@@ -43,8 +43,8 @@ function syncMode() {
   $('distance-control').hidden = mode === 'camera';
   $('demo-button').disabled = mode === 'camera' || fatalRenderError;
   $('input-help').textContent = mode === 'camera'
-    ? 'Face the camera, then move gently. Choose Cursor to turn the camera off.'
-    : 'You can also focus the window and use the arrow keys. Drag to explore on a phone.';
+    ? 'Choose Cursor to turn the camera off.'
+    : 'Drag on touch. Focus the scene to use arrow keys.';
 }
 
 function usePointer() {
@@ -55,7 +55,7 @@ function usePointer() {
   $('calibrate-button').disabled = true;
   target.z = Number($('distance').value);
   syncMode();
-  showStatus('Cursor control is ready');
+  showStatus('Cursor active');
 }
 
 function cameraStatus({ state, message }) {
@@ -91,12 +91,12 @@ async function useCamera() {
     if (request !== trackingRequest) return;
     if (!started) {
       usePointer();
-      showStatus(cameraError || 'Camera could not start. Cursor control is ready.', true);
+      showStatus(cameraError || 'Camera could not start. Cursor active.', true);
     }
   } catch {
     if (request !== trackingRequest) return;
     usePointer();
-    showStatus('Camera mode could not load. Cursor control is ready.', true);
+    showStatus('Camera mode could not load. Cursor active.', true);
   }
 }
 
@@ -158,7 +158,7 @@ document.querySelectorAll('[data-scene]').forEach(button => button.addEventListe
     tab.classList.toggle('selected', selected);
     tab.setAttribute('aria-pressed', String(selected));
   });
-  $('scene-caption').textContent = button.dataset.scene === 'gallery' ? 'A quiet gallery. A new angle.' : 'A sunlit terrace. Room to breathe.';
+  $('scene-caption').textContent = button.dataset.scene === 'gallery' ? 'Gallery' : 'Landscape';
 }));
 
 $('fullscreen-button').hidden = !document.fullscreenEnabled;
@@ -198,7 +198,9 @@ try {
       target.y = Math.sin(elapsed * .37) * .47;
     }
     const gain = Number($('sensitivity').value);
-    const smooth = reducedMotion.matches ? 1 : 1 - Math.exp(-dt * 9);
+    // Camera input needs less easing so the view follows head movement promptly.
+    const response = mode === 'camera' ? 24 : 9;
+    const smooth = reducedMotion.matches ? 1 : 1 - Math.exp(-dt * response);
     viewer.x += (clamp(target.x * gain, -1, 1) - viewer.x) * smooth;
     viewer.y += (clamp(target.y * gain, -1, 1) - viewer.y) * smooth;
     viewer.z += (target.z - viewer.z) * smooth;
