@@ -46,3 +46,5 @@ The runtime files are copied from the pinned npm package by the `predev` and `pr
 Set **Settings → Pages → Source** to **GitHub Actions**. Pushes to `main` run the tests and build from `web/`, then publish `web/dist` with the included workflow. Relative asset URLs support the repository path `/p.o.r.t.a.l./` and local previews.
 
 The two scenes use procedural geometry and materials created for this demo. Dependencies remain under their respective licenses.
+
+LELELLLAOELALOELAOLLEOELEOLELEOLLLAOALLEOALLOA
