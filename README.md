@@ -19,6 +19,8 @@ The native webcam and tracking service is in [`sw/cv/`](sw/cv/README.md). It use
 
 For container builds and Jetson setup, see [Docker on Jetson](sw/cv/README.md#docker-on-jetson).
 
+The separate [position demo](sw/cv/demo/README.md) reads the CV API, plots every tracked person, and highlights the active viewer. It runs locally with Node.js and includes an explicit sample mode.
+
 The app lives in `sw/web/`. Requires Node.js 22.12+ or 24+ and npm.
 
 ```sh

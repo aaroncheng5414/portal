@@ -161,3 +161,7 @@ ctest --test-dir build --output-on-failure
 The CMake build downloads pinned HTTP and JSON libraries. OpenCV must include its DNN, videoio, imgcodecs, imgproc, objdetect, and core modules. A CUDA launch also requires OpenCV's CUDA DNN backend and cuDNN. Run `./build/portal_cv --help` for device, model, API, and calibration arguments. Paths for the model and API schema are relative to the current working directory unless supplied explicitly.
 
 Use `-DBUILD_SERVICE=OFF` for a CMake build of only the dependency-free tracker tests. The existing Makefile `test` target also remains independent of OpenCV. The [API smoke test](api/README.md#contract-check) checks the live service and published response contract.
+
+## Position demo
+
+The separate [web demo](demo/README.md) shows the tracked vector and highlights the active person. With Node.js 20+ installed, run `node demo/server.mjs` from `sw/cv`, open `http://127.0.0.1:5173`, and connect to the running API. Its explicit Sample mode works without the service.
