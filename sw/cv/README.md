@@ -50,13 +50,13 @@ These settings are configurable starting values, not measured operating limits. 
 From the repository root on Windows with MinGW:
 
 ```powershell
-mingw32-make -C sw/src/cv test
+mingw32-make -C sw/cv test
 ```
 
 On Linux:
 
 ```sh
-make -C sw/src/cv test
+make -C sw/cv test
 ```
 
 The tests exercise independent updates, detection reordering, occlusion, geometric matching, expiry, selection cooldown, prediction, and invalid input. They do not establish accuracy or latency on real faces or Jetson hardware.
@@ -77,7 +77,7 @@ sudo systemctl restart docker
 From the repository root, build and run:
 
 ```sh
-sudo docker build -t portal-cv sw/src/cv
+sudo docker build -t portal-cv sw/cv
 sudo docker run --rm --runtime=nvidia \
   -e NVIDIA_DISABLE_REQUIRE=true portal-cv
 ```
@@ -99,6 +99,6 @@ For a smaller image that only runs CPU tests, use the same Dockerfile with an Ub
 
 ```sh
 sudo docker build --build-arg BASE_IMAGE=ubuntu:24.04 \
-  -t portal-cv-cpu sw/src/cv
+  -t portal-cv-cpu sw/cv
 sudo docker run --rm portal-cv-cpu
 ```
