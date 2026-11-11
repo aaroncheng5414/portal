@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptRecord, apiOrigin, connectionStatus, fetchResource, parseState } from '../model.js';
+import { acceptRecord, apiOrigin, connectionStatus, fetchFrame, fetchResource, frameSequence, parseState, processedRate, projectionPoints } from '../model.js';
 import { sampleState } from '../sample.js';
 
 test('accepts a complete state without replacing its raw record or measured positions', () => {
@@ -83,4 +83,58 @@ test('a pre-cancelled request never starts and HTTP failures are surfaced', asyn
   await assert.rejects(fetchResource('http://localhost/', { signal: controller.signal, fetchImpl: async () => { started = true; } }), { name: 'AbortError' });
   assert.equal(started, false);
   await assert.rejects(fetchResource('http://localhost/', { fetchImpl: async () => ({ ok: false, status: 503 }) }), /503/);
+});
+
+test('all three plots use measured vector coordinates and the active ID', () => {
+  const record = sampleState();
+  record.persons[0].position_m = { x: -0.45, y: 0.8, z: 2.3 };
+  record.persons[1].observed = false;
+  record.selected.position_m = { x: 99, y: 99, z: 99 };
+  for (const [plane, expected] of [['xy', [-0.45, 0.8]], ['xz', [-0.45, 2.3]], ['yz', [0.8, 2.3]]]) {
+    const points = projectionPoints(record, plane);
+    assert.equal(points.length, record.persons.length);
+    assert.deepEqual([points[0].horizontal, points[0].vertical], expected);
+    assert.equal(points[0].active, true);
+    assert.equal(points[1].observed, false);
+  }
+  record.selected.person_id = '99';
+  assert.equal(projectionPoints(record, 'xy').filter(point => point.active).length, 0);
+  assert.deepEqual(projectionPoints(null, 'xz'), []);
+  assert.throws(() => projectionPoints(record, 'zz'), /Unknown/);
+});
+
+test('processed FPS comes from backend throughput and disappears for stale or disconnected data', () => {
+  const record = sampleState(); record.source.kind = 'camera'; record.source.inference_fps = 17.25; record.source.capture_fps = 60;
+  const input = { mode: 'connected', record, error: '', now: 100, receivedAt: 100, progressedAt: 100 };
+  assert.equal(processedRate(input).value, 17.25);
+  for (const changed of [{ mode: 'disconnected' }, { mode: 'sample' }, { error: 'Network down' }, { now: 1700 }]) assert.equal(processedRate({ ...input, ...changed }).value, null);
+  record.source.status = 'lost'; assert.equal(processedRate(input).value, null);
+  record.source.status = 'running'; record.source.kind = 'synthetic';
+  assert.deepEqual(processedRate(input), { value: 17.25, label: 'Processed', synthetic: true });
+  assert.equal(processedRate({ ...input, mode: 'sample' }).value, null);
+});
+
+test('camera sequence detects duplicates and replays without inventing alignment with JSON state', () => {
+  assert.deepEqual(frameSequence('14', 13), { sequence: 14, changed: true });
+  assert.deepEqual(frameSequence('14', 14), { sequence: 14, changed: false });
+  assert.deepEqual(frameSequence(null, 14), { sequence: null, changed: true });
+  assert.throws(() => frameSequence('13', 14), /older frame/);
+  for (const header of ['garbage', '-1', '9007199254740992']) assert.throws(() => frameSequence(header), /Invalid/);
+});
+
+test('JPEG fetch retains the exact blob and its own frame sequence', async () => {
+  const blob = new Blob([new Uint8Array([255, 216, 255, 217])], { type: 'image/jpeg' });
+  const headers = new Headers({ 'X-Frame-Sequence': '23' });
+  const result = await fetchFrame('http://localhost/api/v1/frame.jpg', { previousSequence: 21, fetchImpl: async () => ({ ok: true, headers, blob: async () => blob }) });
+  assert.equal(result.blob, blob); assert.equal(result.sequence, 23); assert.equal(result.changed, true);
+  await assert.rejects(fetchFrame('http://localhost/api/v1/frame.jpg', { fetchImpl: async () => ({ ok: true, headers, blob: async () => new Blob(['not a JPEG'], { type: 'text/html' }) }) }), /JPEG/);
+});
+
+test('image download body is cancelled on disconnect and bounded by a timeout', async () => {
+  const fetchImpl = async (_url, { signal }) => ({ ok: true, headers: new Headers(), blob: () => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })) });
+  await assert.rejects(fetchFrame('http://localhost/api/v1/frame.jpg', { timeoutMs: 15, fetchImpl }), /timed out/);
+  const controller = new AbortController();
+  const pending = fetchFrame('http://localhost/api/v1/frame.jpg', { signal: controller.signal, fetchImpl });
+  await new Promise(resolve => setTimeout(resolve, 1)); controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
 });

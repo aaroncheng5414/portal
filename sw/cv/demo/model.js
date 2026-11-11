@@ -58,7 +58,38 @@ export function connectionStatus({ mode, record, error, now, receivedAt, progres
   return { tone: 'good', title: 'Connected', message: 'Receiving tracked positions.', live: true };
 }
 
-export async function fetchResource(url, { signal, timeoutMs = 2500, fetchImpl = fetch } = {}) {
+export function processedRate(input) {
+  const { mode, record, error, now, receivedAt, progressedAt } = input;
+  if (mode === 'sample') return { value: null, label: 'Sample', synthetic: true };
+  const age = record?.source.frame_age_ms;
+  const fresh = mode === 'connected' && !error && record?.source.status === 'running' && age !== null && age !== undefined && age + Math.max(0, now - receivedAt) <= 1500 && now - progressedAt <= 1500;
+  return { value: fresh ? record.source.inference_fps : null, label: 'Processed', synthetic: fresh && record.source.kind === 'synthetic' };
+}
+
+export const projectionAxes = Object.freeze({ xy: ['x', 'y'], xz: ['x', 'z'], yz: ['y', 'z'] });
+
+export function projectionPoints(record, plane) {
+  const axes = projectionAxes[plane];
+  if (!axes) throw new Error('Unknown coordinate plane.');
+  return (record?.persons || []).map(person => ({ id: person.id, horizontal: person.position_m[axes[0]], vertical: person.position_m[axes[1]], position_m: person.position_m, observed: person.observed, active: record.selected.person_id === person.id }));
+}
+
+export function frameSequence(header, previous = null) {
+  if (header === null) return { sequence: null, changed: true };
+  const sequence = /^\d+$/.test(header) ? Number(header) : NaN;
+  if (!unsigned(sequence)) throw new Error('Invalid camera frame sequence.');
+  if (previous !== null && sequence < previous) throw new Error('Camera returned an older frame. Reconnect if the service restarted.');
+  return { sequence, changed: sequence !== previous };
+}
+
+export async function fetchFrame(url, options = {}) {
+  const { previousSequence = null, ...request } = options;
+  const { body, headers } = await fetchResource(url, { ...request, responseType: 'blob' });
+  if (!body.size || body.type.split(';')[0].toLowerCase() !== 'image/jpeg') throw new Error('The frame endpoint did not return a JPEG image.');
+  return { blob: body, ...frameSequence(headers.get('X-Frame-Sequence'), previousSequence) };
+}
+
+export async function fetchResource(url, { signal, timeoutMs = 2500, fetchImpl = fetch, responseType = 'json' } = {}) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal.reason || new DOMException('Request cancelled', 'AbortError'));
   if (signal?.aborted) abort();
@@ -68,7 +99,7 @@ export async function fetchResource(url, { signal, timeoutMs = 2500, fetchImpl =
     if (controller.signal.aborted) throw controller.signal.reason;
     const response = await fetchImpl(url, { signal: controller.signal, cache: 'no-store', mode: 'cors', credentials: 'omit' });
     if (!response.ok) throw new Error(`Backend returned HTTP ${response.status}.`);
-    const body = await response.json();
+    const body = responseType === 'blob' ? await response.blob() : await response.json();
     return { body, headers: response.headers };
   } catch (error) {
     if (controller.signal.aborted) throw controller.signal.reason;

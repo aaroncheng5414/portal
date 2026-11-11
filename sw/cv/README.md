@@ -10,12 +10,12 @@ bash sw/cv/run.sh
 Start the demo in a second terminal, also from the repository root:
 
 ```sh
-node sw/cv/demo/server.mjs
+bash sw/cv/demo/run.sh
 ```
 
 Open **http://127.0.0.1:5173** and click **Connect**. Stop each process with **Ctrl+C**.
 
-Requires Docker with its NVIDIA runtime and Node.js 20+. No npm install is needed. Skip the build on later runs unless native code or configuration changed. The first build compiles OpenCV.
+Requires Docker with its NVIDIA runtime. The demo script downloads a separate Node 22 image; no host Node or npm installation is needed. Skip the CV build on later runs unless native code or configuration changed. The first build compiles OpenCV.
 
 The backend defaults to CUDA and the first readable camera. It does not fall back to CPU. Jetson camera and CUDA execution remain unverified.
 
@@ -29,7 +29,7 @@ bash sw/cv/run.sh ./build/portal_cv --host 0.0.0.0 --device /dev/video2
 
 Use `--synthetic` instead of `--device /dev/video2` for generated input. The default camera request is 1280×720 at 30 FPS; `--width`, `--height`, and `--fps` override it. Camera support determines the actual settings.
 
-Defaults live in [config.h](include/portal/config.h). Rebuild after editing it. See [demo instructions](demo/README.md) and the [API contract](api/README.md) for more detail.
+Defaults live in [config.h](include/portal/config.h). Positions average the last three retained measurements per person. Set `position_average_samples` or pass `--position-average-samples N`; 1 disables smoothing. Rebuild after editing the config. See [demo instructions](demo/README.md) and the [API contract](api/README.md) for more detail.
 
 ## View from a laptop
 
@@ -56,11 +56,13 @@ The [Dockerfile](Dockerfile) builds pinned OpenCV 4.13 sources with CUDA 13.3, c
 
 ## Tracking and output
 
-YuNet observations update one vector entry per person. Matching uses position, box overlap, and landmark distances. The selected viewer has a predicted position; the demo highlights its ID among the measured positions. Defaults are one second for expiry, switching cooldown, and prediction, with a half-second initial acquisition interval.
+YuNet observations update one vector entry per person. Matching uses raw position, box overlap, and landmark distances. The selected viewer has a predicted position; the demo highlights its ID among the filtered positions. Defaults are one second for expiry, switching cooldown, and prediction, with a half-second initial acquisition interval.
 
 Positions are approximate camera coordinates in metres. Eye spacing estimates depth; it is not calibrated to the window. Geometry helps match faces after brief occlusion but does not establish identity.
 
-The API serves positions at `/api/v1/state`, the latest annotated image at `/api/v1/frame.jpg`, and its schema at `/api/v1/schema`. See [API details](api/README.md) for freshness and failure handling.
+The demo shows processed FPS, the latest image with each observed person's XYZ labels, and XY/XZ/YZ plots for the full tracked vector. **Save frame** downloads the displayed JPEG. Images are cached in memory, with no automatic recording.
+
+The API serves positions at `/api/v1/state`, the annotated image at `/api/v1/frame.jpg`, and its schema at `/api/v1/schema`. See [API details](api/README.md) for freshness and failure handling.
 
 ## Native service build
 
