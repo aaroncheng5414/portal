@@ -1,7 +1,7 @@
 node_modules/
-web/public/wasm/
+sw/src/web/public/wasm/
 dist/
 test-results/
 playwright-report/
 .DS_Store
-cv/build/
+sw/src/cv/build/

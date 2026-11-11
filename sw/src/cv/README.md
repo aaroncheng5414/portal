@@ -44,13 +44,13 @@ These settings are configurable starting values, not measured operating limits. 
 From the repository root on Windows with MinGW:
 
 ```powershell
-mingw32-make -C cv test
+mingw32-make -C sw/src/cv test
 ```
 
 On Linux:
 
 ```sh
-make -C cv test
+make -C sw/src/cv test
 ```
 
 The tests exercise independent updates, detection reordering, occlusion, geometric matching, expiry, selection cooldown, prediction, and invalid input. They do not establish accuracy or latency on real faces or Jetson hardware.
