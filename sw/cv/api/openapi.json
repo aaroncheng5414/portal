@@ -1,0 +1,149 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "P.O.R.T.A.L. tracking API",
+    "version": "1.0.0",
+    "description": "Read-only local tracking API. Positions are approximate camera coordinates in metres. The browser demo is a separate client. Nanosecond timestamps are decimal strings from the server monotonic clock, not Unix time. Use age_ms to judge freshness. Camera timestamps mark frame receipt, not sensor exposure."
+  },
+  "servers": [{ "url": "http://127.0.0.1:8080" }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Check whether the HTTP process is responding",
+        "description": "An available HTTP process does not establish that the camera or detector is healthy. Inspect source.status in the state response.",
+        "responses": { "200": { "description": "HTTP process is responding" } }
+      }
+    },
+    "/api/v1/state": {
+      "get": {
+        "summary": "Read the current tracks and selected position",
+        "description": "Polling does not refresh observations. Persons contain measured positions; selected contains the position predicted at query time. Expired people leave persons. The selected position can remain held after loss with stale=true. IDs are temporary tracking IDs, not verified identities. A repeated sequence means no new processed frame, even when query time or predicted position changes.",
+        "responses": {
+          "200": {
+            "description": "Current state, including camera loss or startup",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/State" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/frame.jpg": {
+      "get": {
+        "summary": "Read the most recent processed camera image",
+        "description": "Returns a cached JPEG with tracking annotations. This endpoint does not capture a new frame. Compare X-Frame-Sequence with video.frame_sequence when associating an image with state. State and image requests are independent and may see different frames. An old image may remain available during camera loss; use source.frame_age_ms and source.status.",
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "headers": { "X-Frame-Sequence": { "schema": { "type": "string", "pattern": "^[0-9]+$" } } },
+            "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "503": { "description": "No frame is available yet" }
+        }
+      }
+    },
+    "/api/v1/schema": {
+      "get": {
+        "summary": "Read this OpenAPI document",
+        "responses": { "200": { "description": "OpenAPI 3.1 document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DecimalId": { "type": "string", "pattern": "^[0-9]+$" },
+      "Vec2": {
+        "type": "object", "additionalProperties": false, "required": ["x", "y"],
+        "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+      },
+      "Vec3": {
+        "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+        "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } }
+      },
+      "Box": {
+        "type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height"],
+        "properties": {
+          "x": { "type": "number" }, "y": { "type": "number" },
+          "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      },
+      "Selected": {
+        "type": "object", "additionalProperties": false,
+        "required": ["person_id", "position_m", "velocity_mps", "observation_timestamp_ns", "age_ms", "state", "predicted", "stale"],
+        "properties": {
+          "person_id": { "anyOf": [{ "$ref": "#/components/schemas/DecimalId" }, { "type": "null" }] },
+          "position_m": { "anyOf": [{ "$ref": "#/components/schemas/Vec3" }, { "type": "null" }] },
+          "velocity_mps": { "anyOf": [{ "$ref": "#/components/schemas/Vec3" }, { "type": "null" }] },
+          "observation_timestamp_ns": { "anyOf": [{ "$ref": "#/components/schemas/DecimalId" }, { "type": "null" }] },
+          "age_ms": { "type": ["number", "null"], "minimum": 0 },
+          "state": { "enum": ["acquiring", "locked", "lost"] },
+          "predicted": { "type": "boolean" }, "stale": { "type": "boolean" }
+        }
+      },
+      "Person": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "position_m", "velocity_mps", "age_ms", "observed", "box_px", "landmarks_px"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/DecimalId" },
+          "position_m": { "$ref": "#/components/schemas/Vec3" },
+          "velocity_mps": { "$ref": "#/components/schemas/Vec3" },
+          "age_ms": { "type": "number", "minimum": 0 }, "observed": { "type": "boolean" },
+          "box_px": { "$ref": "#/components/schemas/Box" },
+          "landmarks_px": {
+            "type": "array", "minItems": 5, "maxItems": 5,
+            "description": "YuNet order: person's right eye, left eye, nose, right mouth corner, left mouth corner. Pixels use the original unmirrored image dimensions.",
+            "items": { "$ref": "#/components/schemas/Vec2" }
+          }
+        }
+      },
+      "Source": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "device", "status", "error", "width", "height", "requested_fps", "capture_fps", "inference_fps", "frame_age_ms", "timestamp_basis"],
+        "properties": {
+          "kind": { "enum": ["camera", "synthetic"] }, "device": { "type": ["string", "null"] },
+          "status": { "enum": ["starting", "running", "lost", "error"] }, "error": { "type": ["string", "null"] },
+          "width": { "type": "integer", "minimum": 0 }, "height": { "type": "integer", "minimum": 0 },
+          "requested_fps": { "type": "number", "exclusiveMinimum": 0 },
+          "capture_fps": { "type": "number", "minimum": 0 }, "inference_fps": { "type": "number", "minimum": 0 },
+          "frame_age_ms": { "type": ["number", "null"], "minimum": 0 },
+          "timestamp_basis": { "const": "frame_received" }
+        }
+      },
+      "Detector": {
+        "type": "object", "additionalProperties": false,
+        "required": ["backend", "target", "model", "inference_ms"],
+        "properties": {
+          "backend": { "enum": ["cuda", "cpu", "synthetic"] },
+          "target": { "enum": ["fp32", "fp16", null] }, "model": { "type": ["string", "null"] },
+          "inference_ms": { "type": ["number", "null"], "minimum": 0 }
+        }
+      },
+      "Coordinates": {
+        "type": "object", "additionalProperties": false,
+        "required": ["frame", "units", "axes", "calibration", "ipd_m", "focal_length_px"],
+        "properties": {
+          "frame": { "const": "camera" }, "units": { "const": "m" },
+          "axes": {
+            "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+            "properties": { "x": { "const": "image_right" }, "y": { "const": "up" }, "z": { "const": "forward" } }
+          },
+          "calibration": { "enum": ["approximate_ipd", "synthetic"] },
+          "ipd_m": { "type": "number", "exclusiveMinimum": 0 }, "focal_length_px": { "type": "number", "minimum": 0 }
+        }
+      },
+      "State": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema_version", "sequence", "generated_at_ns", "source", "detector", "coordinates", "selected", "persons", "video"],
+        "properties": {
+          "schema_version": { "const": "1.0" }, "sequence": { "type": "integer", "minimum": 0 },
+          "generated_at_ns": { "$ref": "#/components/schemas/DecimalId" },
+          "source": { "$ref": "#/components/schemas/Source" }, "detector": { "$ref": "#/components/schemas/Detector" },
+          "coordinates": { "$ref": "#/components/schemas/Coordinates" }, "selected": { "$ref": "#/components/schemas/Selected" },
+          "persons": { "type": "array", "items": { "$ref": "#/components/schemas/Person" } },
+          "video": {
+            "type": "object", "additionalProperties": false, "required": ["snapshot_url", "frame_sequence"],
+            "properties": { "snapshot_url": { "const": "/api/v1/frame.jpg" }, "frame_sequence": { "type": "integer", "minimum": 0 } }
+          }
+        }
+      }
+    }
+  }
+}

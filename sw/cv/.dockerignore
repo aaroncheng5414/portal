@@ -1,2 +1,5 @@
 build/
 .git/
+cmake-build*/
+*.exe
+*.o

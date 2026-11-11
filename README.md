@@ -15,7 +15,7 @@ This is an interactive concept mockup. It does not demonstrate completed hardwar
 
 ## Run locally
 
-The native per-person tracking component is in [`sw/cv/`](sw/cv/README.md). It maintains face tracks, matches returning faces, and provides predicted positions. Its tests use synthetic observations; camera capture and YuNet/CUDA inference are separate integration work.
+The native webcam and tracking service is in [`sw/cv/`](sw/cv/README.md). It uses YuNet, maintains per-person tracks, and exposes measured and predicted positions through a [read-only API](sw/cv/api/README.md). CUDA is the default inference backend; CPU mode is explicit. Jetson camera and GPU performance still need hardware validation.
 
 For container builds and Jetson setup, see [Docker on Jetson](sw/cv/README.md#docker-on-jetson).
 
