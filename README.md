@@ -15,6 +15,8 @@ This is an interactive concept mockup. It does not demonstrate completed hardwar
 
 ## Run locally
 
+The native per-person tracking component is in [`cv/`](cv/README.md). It maintains face tracks, matches returning faces, and provides predicted positions. Its tests use synthetic observations; camera capture and YuNet/CUDA inference are separate integration work.
+
 The app lives in `web/`. Requires Node.js 22.12+ or 24+ and npm.
 
 ```sh
