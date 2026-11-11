@@ -17,6 +17,8 @@ This is an interactive concept mockup. It does not demonstrate completed hardwar
 
 The native per-person tracking component is in [`sw/src/cv/`](sw/src/cv/README.md). It maintains face tracks, matches returning faces, and provides predicted positions. Its tests use synthetic observations; camera capture and YuNet/CUDA inference are separate integration work.
 
+For container builds and Jetson setup, see [Docker on Jetson](sw/src/cv/README.md#docker-on-jetson).
+
 The app lives in `sw/src/web/`. Requires Node.js 22.12+ or 24+ and npm.
 
 ```sh

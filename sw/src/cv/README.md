@@ -60,3 +60,45 @@ make -C sw/src/cv test
 ```
 
 The tests exercise independent updates, detection reordering, occlusion, geometric matching, expiry, selection cooldown, prediction, and invalid input. They do not establish accuracy or latency on real faces or Jetson hardware.
+
+## Docker on Jetson
+
+The [Dockerfile](Dockerfile) builds and runs the tracking tests. Its default base is NVIDIA's [CUDA 13.3.0 and cuDNN development image](https://catalog.ngc.nvidia.com/orgs/nvidia/-/containers/cuda/13.3.0-cudnn-devel-ubuntu24.04/layers). The image includes CUDA development tools, but the current tracker tests run on the CPU. OpenCV, YuNet inference, and camera capture are not included.
+
+These commands target the Jetson Orin Nano Super on L4T R39.2.0 (JetPack 7.2). Run them in Bash on the Jetson. Docker must already be installed. Configure its NVIDIA runtime once if needed:
+
+```sh
+sudo apt update
+sudo apt install -y nvidia-container
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+From the repository root, build and run:
+
+```sh
+sudo docker build -t portal-cv sw/src/cv
+sudo docker run --rm --runtime=nvidia \
+  -e NVIDIA_DISABLE_REQUIRE=true portal-cv
+```
+
+The build runs the tests and fails if any test fails. Running the image repeats the tests and should end with `18/18 tests passed`. Rebuild after pulling changes or editing `config.h`. The build context contains only the CV component, and `.dockerignore` excludes local build output.
+
+NVIDIA [recommends CUDA 13.3 with `NVIDIA_DISABLE_REQUIRE=true` for Orin Nano on R39.2](https://forums.developer.nvidia.com/t/cuda-13-2-1-runtime-image-cant-run-on-r39-2-sample-rootfs-for-orin-nano/372683/21). The flag bypasses an outdated driver-version check. It is supplied at launch rather than saved in the image. Recheck compatibility before changing the base image or JetPack version. The cited report tested the runtime image; this Dockerfile uses the corresponding development image, which still needs validation on the target Jetson.
+
+Check GPU visibility separately:
+
+```sh
+sudo docker run --rm --runtime=nvidia \
+  -e NVIDIA_DISABLE_REQUIRE=true portal-cv nvidia-smi
+```
+
+A GPU listing confirms driver access inside the container. It does not test CUDA kernels or YuNet inference. To open a shell in the image, replace `nvidia-smi` with `bash` and add `-it` after `docker run`.
+
+For a smaller image that only runs CPU tests, use the same Dockerfile with an Ubuntu base. This works on ARM64 or x86-64 without the NVIDIA runtime:
+
+```sh
+sudo docker build --build-arg BASE_IMAGE=ubuntu:24.04 \
+  -t portal-cv-cpu sw/src/cv
+sudo docker run --rm portal-cv-cpu
+```
