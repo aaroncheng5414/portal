@@ -96,6 +96,7 @@ void same_tracks(const std::vector<PersonTrack>& actual, const std::vector<Perso
         require(a.id == b.id && a.first_seen_ns == b.first_seen_ns && a.last_seen_ns == b.last_seen_ns
                 && a.visible_since_ns == b.visible_since_ns && a.observed == b.observed, "track identity or observation times changed");
         same_position(a.observation.position_m, b.observation.position_m, "track position changed");
+        same_position(a.filtered_position_m, b.filtered_position_m, "filtered position changed");
         same_position(a.velocity_mps, b.velocity_mps, "track velocity changed");
         near(a.observation.confidence, b.observation.confidence, "track confidence changed");
         near(a.observation.box.x, b.observation.box.x, "box x changed");
@@ -274,6 +275,7 @@ void returning_after_ttl_creates_fresh_identity() {
     require(fresh.id != old_id, "expired IDs must not be reused");
     require(fresh.history.size() == 1 && fresh.first_seen_ns == ns(1.2), "returning person must not inherit expired history");
     same_position(fresh.velocity_mps, {0.0, 0.0, 0.0}, "returning person starts with zero inferred velocity");
+    same_position(fresh.filtered_position_m, fresh.observation.position_m, "new ID must not inherit an expired person's average");
 }
 
 void acquisition_requires_continuous_dwell() {
@@ -338,11 +340,11 @@ void prediction_tapers_to_a_bounded_endpoint_without_refreshing_observations() {
     const auto id = tracker.active_person_id();
     const auto midpoint = tracker.get_position(ns(0.7));
     require(midpoint.person_id == id && midpoint.predicted, "a delayed query should predict the selected person");
-    same_position(midpoint.position_m, {0.575, -0.2875, 2.14375}, "half-horizon displacement follows the analytic integral");
+    same_position(midpoint.position_m, {0.475, -0.2375, 2.11875}, "half-horizon displacement starts from the filtered position");
     same_position(midpoint.velocity_mps, {0.5, -0.25, 0.125}, "velocity falls linearly halfway through prediction");
     require(midpoint.observation_timestamp_ns == ns(0.2) && midpoint.age_ns == ns(0.5), "prediction must retain the original observation time and age");
     const auto endpoint = tracker.get_position(ns(1.2));
-    same_position(endpoint.position_m, {0.7, -0.35, 2.175}, "one-second prediction endpoint");
+    same_position(endpoint.position_m, {0.6, -0.3, 2.15}, "one-second prediction endpoint");
     same_position(endpoint.velocity_mps, {0.0, 0.0, 0.0}, "prediction velocity reaches zero at horizon");
     require(!endpoint.predicted && !endpoint.stale, "prediction horizon should stop motion without expiring the track");
     const auto held = tracker.get_position(ns(2.2));
@@ -375,7 +377,7 @@ void expiry_holds_the_last_tapered_position() {
     tracker.expire(ns(1.2));
     require(tracker.persons().empty(), "expired person must be removed from the live vector");
     const auto held = tracker.get_position(ns(2.0));
-    same_position(held.position_m, {0.7, 0.0, 2.0}, "expiry should hold the tapered endpoint without snapping back");
+    same_position(held.position_m, {0.6, 0.0, 2.0}, "expiry should hold the filtered prediction endpoint without snapping back");
     same_position(held.velocity_mps, {0.0, 0.0, 0.0}, "expired position must have zero predicted velocity");
     require(held.state == TrackingState::Lost && held.stale, "held expired position must remain explicitly lost and stale");
     require(held.observation_timestamp_ns == ns(0.2), "expiry must preserve the actual last observation time");
@@ -412,6 +414,61 @@ void low_confidence_detections_do_not_refresh_tracks() {
     tracker.update({weak}, ns(0.1));
     require(tracker.persons().size() == 1 && !tracker.persons().front().observed, "below-threshold detection should not count as an observation");
     require(tracker.persons().front().history.size() == 1 && tracker.persons().front().last_seen_ns == ns(0.0), "weak detection must not refresh history or TTL");
+}
+
+void position_average_reduces_spikes_independently() {
+    TrackerConfig config;
+    config.acquisition_ns = 0;
+    PersonTracker tracker(config);
+    const std::array<double, 6> input = {0.0, 0.0, 0.15, 0.0, 0.0, 0.0};
+    const std::array<double, 6> expected = {0.0, 0.0, 0.05, 0.05, 0.05, 0.0};
+    tracker.update({face({0.0, 0.0, 2.0}), face({1.0, 1.0, 3.0}, 1)}, ns(0.0));
+    const auto first = id_at_x(tracker, 0.0);
+    const auto second = id_at_x(tracker, 1.0);
+    same_position(track(tracker, first).filtered_position_m, {0.0, 0.0, 2.0}, "first sample should initialize immediately");
+    for (std::size_t i = 1; i < input.size(); ++i) {
+        tracker.update({face({1.0, 1.0, 3.0}, 1), face({input[i], -input[i], 2.0 + input[i]})}, ns(i * 0.1));
+        require(tracker.persons().size() == 2, "smoothing must preserve both IDs");
+        same_position(track(tracker, first).filtered_position_m, {expected[i], -expected[i], 2.0 + expected[i]}, "isolated spike should be averaged on all axes");
+        same_position(track(tracker, first).observation.position_m, {input[i], -input[i], 2.0 + input[i]}, "raw position must remain available for matching");
+        same_position(track(tracker, second).filtered_position_m, {1.0, 1.0, 3.0}, "another person's measurements must not enter the average");
+        same_position(tracker.get_position(ns(i * 0.1)).position_m, track(tracker, first).filtered_position_m, "selected output should use the filtered position");
+    }
+    const auto before_loss = track(tracker, first);
+    tracker.update({face({1.0, 1.0, 3.0}, 1)}, ns(0.6));
+    tracker.expire(ns(0.8));
+    same_position(track(tracker, first).filtered_position_m, before_loss.filtered_position_m, "missing observations must not change the average");
+    require(track(tracker, first).history.size() == before_loss.history.size(), "missing frames must not append fake filter samples");
+}
+
+void position_average_does_not_change_matching() {
+    TrackerConfig config;
+    config.max_position_distance_m = 0.205;
+    PersonTracker tracker(config);
+    tracker.update({face({0.0, 0.0, 2.0})}, ns(0.0));
+    const auto id = tracker.persons().front().id;
+    for (int i = 1; i < 10; ++i) {
+        tracker.update({face({i * 0.2, 0.0, 2.0})}, ns(i * 0.1));
+        require(tracker.persons().size() == 1 && tracker.persons().front().id == id, "filter lag must not reject a valid motion match");
+    }
+    near(track(tracker, id).filtered_position_m.x, 1.6, "filter should average the latest three measurements");
+    near(track(tracker, id).observation.position_m.x, 1.8, "matching should retain the latest raw measurement");
+}
+
+void position_average_window_is_configurable() {
+    for (const auto window : {std::size_t{1}, std::size_t{2}, std::size_t{3}}) {
+        TrackerConfig config;
+        config.position_average_samples = window;
+        config.history_limit = 2;
+        PersonTracker tracker(config);
+        tracker.update({face({0.0, 0.0, 2.0})}, ns(0.0));
+        tracker.update({face({0.1, 0.0, 2.0})}, ns(0.1));
+        tracker.update({face({0.2, 0.0, 2.0})}, ns(0.2));
+        near(tracker.persons().front().filtered_position_m.x, window == 1 ? 0.2 : 0.15, "window should use only retained real samples, with one disabling smoothing");
+    }
+    TrackerConfig invalid;
+    invalid.position_average_samples = 0;
+    rejects([&] { PersonTracker tracker(invalid); }, "zero-sample average must be rejected");
 }
 
 void out_of_order_times_do_not_corrupt_tracks() {
@@ -452,6 +509,9 @@ int main() {
         {"expiry holds the last tapered position", expiry_holds_the_last_tapered_position},
         {"invalid observations are rejected transactionally", invalid_observations_are_rejected_transactionally},
         {"low confidence does not refresh tracks", low_confidence_detections_do_not_refresh_tracks},
+        {"position average reduces spikes independently", position_average_reduces_spikes_independently},
+        {"position average does not change matching", position_average_does_not_change_matching},
+        {"position average window is configurable", position_average_window_is_configurable},
         {"out-of-order times do not corrupt tracks", out_of_order_times_do_not_corrupt_tracks},
     };
     std::size_t failed = 0;

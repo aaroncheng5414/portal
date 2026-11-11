@@ -48,6 +48,7 @@ struct PersonTrack {
     std::uint64_t id = 0;
     FaceObservation observation;
     LandmarkSignature signature{};
+    Vec3 filtered_position_m;
     Vec3 velocity_mps;
     std::vector<TrackSample> history;
     std::int64_t first_seen_ns = 0;

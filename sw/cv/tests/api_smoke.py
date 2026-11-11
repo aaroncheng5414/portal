@@ -52,7 +52,7 @@ def main():
     base = f"http://127.0.0.1:{port}"
     with tempfile.TemporaryFile(mode="w+") as log:
         process = subprocess.Popen(
-            [str(binary), "--synthetic", "--host", "127.0.0.1", "--port", str(port)],
+            [str(binary), "--synthetic", "--position-average-samples", "1", "--host", "127.0.0.1", "--port", str(port)],
             cwd=root, stdout=log, stderr=subprocess.STDOUT,
         )
         try:

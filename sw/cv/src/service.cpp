@@ -21,12 +21,14 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <regex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -182,6 +184,7 @@ void help() {
         "  --schema PATH               Default api/openapi.json\n"
         "  --width N --height N        Requested camera size, default 1280x720\n"
         "  --fps N                     Requested camera rate, default 30\n"
+        "  --position-average-samples N  Average up to N retained positions, default 3; 1 disables\n"
         "  --ipd-m N                   Assumed physical eye spacing, default 0.063 m\n"
         "  --focal-length-px N         Calibrated focal length; zero uses FOV estimate\n"
         "  --horizontal-fov-deg N      Fallback horizontal FOV, default 60 degrees\n"
@@ -206,6 +209,8 @@ ServiceConfig arguments(int argc, char** argv) {
         else if (option == "--width") config.width = bounded_integer(value, option, 32, 8192);
         else if (option == "--height") config.height = bounded_integer(value, option, 32, 8192);
         else if (option == "--fps") config.requested_fps = number_argument(value, option);
+        else if (option == "--position-average-samples") config.tracker.position_average_samples =
+            static_cast<std::size_t>(bounded_integer(value, option, 1, std::numeric_limits<int>::max()));
         else if (option == "--ipd-m") config.ipd_m = number_argument(value, option);
         else if (option == "--focal-length-px") config.focal_length_px = number_argument(value, option);
         else if (option == "--horizontal-fov-deg") config.horizontal_fov_deg = number_argument(value, option);
@@ -415,18 +420,49 @@ void annotate(cv::Mat& image, const PersonTracker& tracker) {
     for (const auto& person : tracker.persons()) {
         if (!person.observed) continue;
         const auto& box = person.observation.box;
-        const auto color = tracker.active_person_id() == person.id ? cv::Scalar(125, 220, 100) : cv::Scalar(220, 170, 95);
+        const auto active = tracker.active_person_id() == person.id;
+        const auto color = active ? cv::Scalar(125, 220, 100) : cv::Scalar(220, 170, 95);
         cv::rectangle(image, cv::Point(pixel(box.x), pixel(box.y)), cv::Point(pixel(box.x + box.width), pixel(box.y + box.height)), color, 2);
         for (const auto& point : person.observation.landmarks) cv::circle(image, cv::Point(pixel(point.x), pixel(point.y)), 3, color, -1);
-        cv::putText(image, "Person " + std::to_string(person.id), cv::Point(pixel(box.x), pixel(box.y - 8)),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.6, color, 1, cv::LINE_AA);
+        std::ostringstream coordinates;
+        coordinates << std::fixed << std::setprecision(2)
+                    << "X " << person.filtered_position_m.x << "  Y " << person.filtered_position_m.y
+                    << "  Z " << person.filtered_position_m.z << " m";
+        const std::array<std::string, 2> lines{
+            std::string(active ? "ACTIVE - Person " : "Person ") + std::to_string(person.id), coordinates.str()};
+        constexpr int font = cv::FONT_HERSHEY_SIMPLEX;
+        constexpr int margin = 2;
+        constexpr int padding = 4;
+        constexpr int gap = 3;
+        double scale = 0.55;
+        int baseline = 0;
+        int width = 0;
+        for (const auto& line : lines) width = std::max(width, cv::getTextSize(line, font, scale, 1, &baseline).width);
+        const auto initial_height = cv::getTextSize("Ag", font, scale, 1, &baseline).height;
+        scale *= std::min({1.0, std::max(1, image.cols - 2 * (margin + padding)) / static_cast<double>(width),
+            std::max(1, image.rows - 2 * (margin + padding) - gap) / static_cast<double>(2 * (initial_height + baseline))});
+        width = 0;
+        for (const auto& line : lines) width = std::max(width, cv::getTextSize(line, font, scale, 1, &baseline).width);
+        const auto text_height = cv::getTextSize("Ag", font, scale, 1, &baseline).height;
+        const auto label_width = width + padding * 2;
+        const auto label_height = 2 * (text_height + baseline) + gap + padding * 2;
+        const auto left = std::clamp(pixel(box.x), margin, std::max(margin, image.cols - label_width - margin));
+        auto top = pixel(box.y) - label_height - margin;
+        if (top < margin) top = pixel(box.y + box.height) + margin;
+        top = std::clamp(top, margin, std::max(margin, image.rows - label_height - margin));
+        cv::rectangle(image, cv::Rect(left, top, label_width, label_height), cv::Scalar(20, 24, 28), cv::FILLED);
+        cv::rectangle(image, cv::Rect(left, top, label_width, label_height), color, 1);
+        for (std::size_t line = 0; line < lines.size(); ++line) {
+            const auto y = top + padding + text_height + static_cast<int>(line) * (text_height + baseline + gap);
+            cv::putText(image, lines[line], cv::Point(left + padding, y), font, scale, color, 1, cv::LINE_AA);
+        }
     }
 }
 
 void processing_loop(const ServiceConfig& config, cv::Ptr<cv::FaceDetectorYN> model,
                      CaptureSlot& slot, PublishedState& published, std::atomic<bool>& stop) {
     Snapshot state(config.tracker);
-    FrameRate inference_rate(config.fps_window_frames);
+    FrameRate processing_rate(config.fps_window_frames);
     std::int64_t watermark = -1;
     bool marked_lost = false;
     std::optional<std::string> processing_error;
@@ -471,13 +507,13 @@ void processing_loop(const ServiceConfig& config, cv::Ptr<cv::FaceDetectorYN> mo
                 watermark = frame->received_ns;
                 marked_lost = false;
                 state.inference_ms = milliseconds(after - before);
-                state.inference_fps = inference_rate.add(after);
                 state.jpeg = std::move(jpeg);
                 state.focal_length_px = focal_length(config, frame->image.cols);
                 state.frame_received_ns = frame->received_ns;
                 state.frame_width = frame->image.cols;
                 state.frame_height = frame->image.rows;
                 state.frame_sequence = ++state.sequence;
+                state.inference_fps = processing_rate.add(now_ns());
                 processing_error.reset();
             } else {
                 if ((source.status == "lost" || source.status == "error") && !marked_lost) {
@@ -525,7 +561,7 @@ Json state_json(const Snapshot& state, const ServiceConfig& config, std::int64_t
         Json landmarks = Json::array();
         for (const auto& point : person.observation.landmarks) landmarks.push_back({{"x", point.x}, {"y", point.y}});
         const auto& box = person.observation.box;
-        people.push_back({{"id", std::to_string(person.id)}, {"position_m", vector_json(person.observation.position_m)},
+        people.push_back({{"id", std::to_string(person.id)}, {"position_m", vector_json(person.filtered_position_m)},
             {"velocity_mps", vector_json(person.velocity_mps)}, {"age_ms", milliseconds(timestamp - person.last_seen_ns)},
             {"observed", person.observed && source_running}, {"box_px", {{"x", box.x}, {"y", box.y}, {"width", box.width}, {"height", box.height}}},
             {"landmarks_px", std::move(landmarks)}});

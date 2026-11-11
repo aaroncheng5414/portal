@@ -17,7 +17,7 @@
     "/api/v1/state": {
       "get": {
         "summary": "Read the current tracks and selected position",
-        "description": "Polling does not refresh observations. Persons contain measured positions; selected contains the position predicted at query time. Expired people leave persons. The selected position can remain held after loss with stale=true. IDs are temporary tracking IDs, not verified identities. A repeated sequence means no new processed frame, even when query time or predicted position changes.",
+        "description": "Polling does not refresh observations. Persons contain positions averaged over each person's recent measurements (default three); selected predicts from that filtered position at query time. Boxes and landmarks remain the latest raw observation. Expired people leave persons. The selected position can remain held after loss with stale=true. IDs are temporary tracking IDs, not verified identities. A repeated sequence means no new processed frame, even when query time or predicted position changes.",
         "responses": {
           "200": {
             "description": "Current state, including camera loss or startup",
@@ -29,7 +29,7 @@
     "/api/v1/frame.jpg": {
       "get": {
         "summary": "Read the most recent processed camera image",
-        "description": "Returns a cached JPEG with tracking annotations. This endpoint does not capture a new frame. Compare X-Frame-Sequence with video.frame_sequence when associating an image with state. State and image requests are independent and may see different frames. An old image may remain available during camera loss; use source.frame_age_ms and source.status.",
+        "description": "Returns a cached JPEG with each observed person's ID and filtered XYZ in metres. ACTIVE marks the selected viewer in that processed frame. This endpoint does not capture a new frame. Compare X-Frame-Sequence with video.frame_sequence when associating an image with state. State and image requests are independent and may see different frames. An old image may remain available during camera loss; use source.frame_age_ms and source.status.",
         "responses": {
           "200": {
             "description": "JPEG image",
@@ -102,7 +102,8 @@
           "status": { "enum": ["starting", "running", "lost", "error"] }, "error": { "type": ["string", "null"] },
           "width": { "type": "integer", "minimum": 0 }, "height": { "type": "integer", "minimum": 0 },
           "requested_fps": { "type": "number", "exclusiveMinimum": 0 },
-          "capture_fps": { "type": "number", "minimum": 0 }, "inference_fps": { "type": "number", "minimum": 0 },
+          "capture_fps": { "type": "number", "minimum": 0, "description": "Measured frame receipt rate from the capture worker." },
+          "inference_fps": { "type": "number", "minimum": 0, "description": "Processed frames per second, measured from successful frame completion after detection, tracking, annotation, and JPEG encoding. This is a rolling throughput measure, not detector-only speed or browser refresh rate. The field name is retained for API 1.0 compatibility." },
           "frame_age_ms": { "type": ["number", "null"], "minimum": 0 },
           "timestamp_basis": { "const": "frame_received" }
         }

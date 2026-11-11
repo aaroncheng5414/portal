@@ -13,11 +13,11 @@ The API is read-only. Native startup defaults to `127.0.0.1:8080`. Browser clien
 
 ## Positions and identity
 
-`persons` contains the current tracked vector. Each person's `position_m` is the latest measured position. Missing people remain until their tracking timeout expires. `observed` describes the latest processed frame, not a new observation made by the HTTP request.
+`persons` contains the current tracked vector. Each person's `position_m` averages their latest three retained measurements by default. Set `TrackerConfig::position_average_samples` in `config.h`, or pass `--position-average-samples N`; 1 disables smoothing. The window is capped by `history_limit`. Only matched observations update the average. Missing people remain until their tracking timeout expires. `observed` describes the latest processed frame, not a new observation made by the HTTP request.
 
-`selected.person_id` identifies the active viewer. The demo highlights that ID in the vector. `selected.position_m` is predicted at query time using the tracker history. It may be held after loss, even after that ID leaves `persons`; use `selected.state` and `selected.stale` before using the position. A selected ID is not proof of someone's identity.
+`selected.person_id` identifies the active viewer. The demo highlights that ID in the vector. `selected.position_m` is predicted at query time from the filtered position and the velocity fitted to raw position history. It may be held after loss, even after that ID leaves `persons`; use `selected.state` and `selected.stale` before using the position. A selected ID is not proof of someone's identity.
 
-Positions use camera coordinates in metres: X points right in the unmirrored image, Y points up, and Z points forward from the camera. They are not calibrated to the physical window. Depth uses `Z = focal_length_px * ipd_m / eye_separation_px`. The default IPD is 0.063 metres. Without an explicit focal length, the service estimates it from image width and the configured horizontal field of view. Head rotation and individual eye spacing affect the result.
+Positions use camera coordinates in metres: X points right in the unmirrored image, Y points up, and Z points forward from the camera. They are not calibrated to the physical window. Each raw depth measurement uses `Z = focal_length_px * ipd_m / eye_separation_px` before averaging. Boxes and landmarks still describe the latest raw observation. The default IPD is 0.063 metres. Without an explicit focal length, the service estimates it from image width and the configured horizontal field of view. Head rotation and individual eye spacing affect the result.
 
 ## Time and freshness
 
@@ -28,6 +28,10 @@ Camera timestamps mark when the application receives the frame. They do not incl
 `sequence` advances when a new frame is processed. Repeated reads can return the same sequence with a later `generated_at_ns`, greater ages, and a newly predicted selected position. Fetch success does not make the underlying camera data fresh.
 
 State and JPEG requests are independent. Compare the JPEG's `X-Frame-Sequence` response header with `video.frame_sequence` before treating them as the same frame. Camera loss can leave an old JPEG available. Check `source.status` and `source.frame_age_ms`.
+
+The cached JPEG labels each observed person with their ID and measured X, Y, and Z in metres. `ACTIVE` marks the selected viewer in that frame. These labels use the same tracker update as the image. Saving the JPEG preserves those annotations without storing a new capture on the backend.
+
+`source.capture_fps` measures camera frame receipt. `source.inference_fps` measures completed processed frames per second, including detection, tracking, drawing, and JPEG encoding. It uses successful completion timestamps, so failed processing does not count as another frame. The existing field name stays unchanged for API 1.0. `detector.inference_ms` remains the time spent detecting faces and converting their observations. Browser refresh and polling rates are separate.
 
 ## Failures and sample input
 
@@ -43,4 +47,4 @@ With Python's `jsonschema` package installed, run from `sw/cv` after building th
 python3 tests/api_smoke.py build/portal_cv
 ```
 
-This starts a synthetic service on a temporary local port and checks the published schema, state responses, selected viewer, frame data, CORS, read-only routes, concurrent reads, and shutdown. It then loads YuNet in explicit CPU mode and checks that a missing camera leaves HTTP available without inventing frames or tracks.
+This starts a synthetic service on a temporary local port with averaging disabled to check the raw eye-geometry conversion, published schema, state responses, selected viewer, frame data, CORS, read-only routes, concurrent reads, and shutdown. Tracker tests cover averaging separately. It then loads YuNet in explicit CPU mode and checks that a missing camera leaves HTTP available without inventing frames or tracks.

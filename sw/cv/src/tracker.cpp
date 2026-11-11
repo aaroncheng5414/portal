@@ -31,6 +31,18 @@ Vec3 displaced(Vec3 position, Vec3 velocity, long double seconds) {
     };
 }
 
+Vec3 average_position(const std::vector<TrackSample>& history, std::size_t window) {
+    const auto count = std::min(history.size(), window);
+    std::array<long double, 3> mean{};
+    for (std::size_t i = history.size() - count; i < history.size(); ++i) {
+        const auto& position = history[i].position_m;
+        mean[0] += static_cast<long double>(position.x) / count;
+        mean[1] += static_cast<long double>(position.y) / count;
+        mean[2] += static_cast<long double>(position.z) / count;
+    }
+    return {bounded(mean[0]), bounded(mean[1]), bounded(mean[2])};
+}
+
 long double distance(Vec3 a, Vec3 b) {
     return std::hypot(static_cast<long double>(a.x) - b.x,
                       static_cast<long double>(a.y) - b.y,
@@ -62,6 +74,7 @@ long double overlap(Rect a, Rect b) {
 void validate(const TrackerConfig& config) {
     if (config.track_timeout_ns <= 0 || config.switch_cooldown_ns < 0 ||
         config.max_prediction_ns < 0 || config.acquisition_ns < 0 || config.history_limit == 0 ||
+        config.position_average_samples == 0 ||
         !std::isfinite(config.min_confidence) || config.min_confidence < 0.0 || config.min_confidence > 1.0 ||
         !std::isfinite(config.max_position_distance_m) || config.max_position_distance_m <= 0.0 ||
         !std::isfinite(config.max_signature_distance) || config.max_signature_distance <= 0.0) {
@@ -82,7 +95,7 @@ void validate(const FaceObservation& observation) {
 PositionSnapshot raw_snapshot(const PersonTrack& person, TrackingState state) {
     PositionSnapshot result;
     result.person_id = person.id;
-    result.position_m = person.observation.position_m;
+    result.position_m = person.filtered_position_m;
     result.velocity_mps = person.velocity_mps;
     result.observation_timestamp_ns = person.last_seen_ns;
     result.state = state;
@@ -297,7 +310,9 @@ void PersonTracker::update(const std::vector<FaceObservation>& observations, std
     std::vector<std::vector<double>> costs(count, std::vector<double>(count, 0.0));
     for (std::size_t row = 0; row < track_count; ++row) {
         const auto& person = next.persons_[row];
-        const auto expected = predict(raw_snapshot(person, TrackingState::Locked), capture_time_ns, config_).position_m;
+        auto match_snapshot = raw_snapshot(person, TrackingState::Locked);
+        match_snapshot.position_m = person.observation.position_m;
+        const auto expected = predict(match_snapshot, capture_time_ns, config_).position_m;
         for (std::size_t column = 0; column < candidate_count; ++column) {
             const auto& candidate = candidates[column];
             const auto position_error = distance(expected, candidate.observation.position_m);
@@ -331,6 +346,7 @@ void PersonTracker::update(const std::vector<FaceObservation>& observations, std
         person.last_seen_ns = capture_time_ns;
         person.history.push_back({capture_time_ns, candidate.observation.position_m});
         if (person.history.size() > config_.history_limit) person.history.erase(person.history.begin());
+        person.filtered_position_m = average_position(person.history, config_.position_average_samples);
         person.velocity_mps = velocity(person.history);
     }
     for (std::size_t column = 0; column < candidate_count; ++column) {
@@ -339,6 +355,7 @@ void PersonTracker::update(const std::vector<FaceObservation>& observations, std
         PersonTrack person;
         person.id = next.next_id_++;
         person.observation = candidate.observation;
+        person.filtered_position_m = candidate.observation.position_m;
         person.signature = candidate.signature;
         person.history.push_back({capture_time_ns, candidate.observation.position_m});
         person.first_seen_ns = person.last_seen_ns = person.visible_since_ns = capture_time_ns;
