@@ -26,6 +26,8 @@ Use capture and query timestamps from the same monotonic clock, in nanoseconds. 
 
 ## Defaults
 
+Tracker settings live in [`include/portal/config.h`](include/portal/config.h). Edit this file and rebuild to change the defaults. The timing, history, confidence, and distance settings can also be overridden through `TrackerConfig` when constructing a tracker. Matching weights and the unmatched cost are compile-time settings.
+
 | Setting | Initial value |
 | --- | --- |
 | Person expiry | 1 second since that person's last observation |
@@ -36,6 +38,10 @@ Use capture and query timestamps from the same monotonic clock, in nanoseconds. 
 | Minimum detection confidence | 0.6 |
 | Maximum match position distance | 0.75 metres |
 | Maximum landmark-signature distance | 0.35 |
+| Position match weight | 0.45 |
+| Landmark match weight | 0.45 |
+| Box overlap match weight | 0.10 |
+| Cost per unmatched track or detection | 1.1 |
 
 These settings are configurable starting values, not measured operating limits. Detection confidence is the detector's score, not a probability that person association is correct.
 

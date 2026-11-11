@@ -1,5 +1,7 @@
 #pragma once
 
+#include "portal/config.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -52,17 +54,6 @@ struct PersonTrack {
     std::int64_t last_seen_ns = 0;
     std::int64_t visible_since_ns = 0;
     bool observed = false;
-};
-
-struct TrackerConfig {
-    std::int64_t track_timeout_ns = 1'000'000'000;
-    std::int64_t switch_cooldown_ns = 1'000'000'000;
-    std::int64_t max_prediction_ns = 1'000'000'000;
-    std::int64_t acquisition_ns = 500'000'000;
-    std::size_t history_limit = 8;
-    double min_confidence = 0.6;
-    double max_position_distance_m = 0.75;
-    double max_signature_distance = 0.35;
 };
 
 enum class TrackingState { Acquiring, Locked, Lost };

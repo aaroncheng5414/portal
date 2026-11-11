@@ -286,6 +286,14 @@ void PersonTracker::update(const std::vector<FaceObservation>& observations, std
     }
     const auto count = track_count + candidate_count;
     constexpr double impossible = 1'000'000.0;
+    constexpr auto total_match_weight = TrackerConfig::position_match_weight +
+        TrackerConfig::signature_match_weight + TrackerConfig::overlap_match_weight;
+    static_assert(TrackerConfig::position_match_weight >= 0.0L &&
+        TrackerConfig::signature_match_weight >= 0.0L && TrackerConfig::overlap_match_weight >= 0.0L &&
+        total_match_weight > 0.0L && total_match_weight < impossible,
+        "Match weights must be nonnegative with a positive total below the forbidden cost.");
+    static_assert(TrackerConfig::unmatched_cost > 0.0 && TrackerConfig::unmatched_cost < impossible / 2.0,
+        "Unmatched cost must be positive and less than half the forbidden cost.");
     std::vector<std::vector<double>> costs(count, std::vector<double>(count, 0.0));
     for (std::size_t row = 0; row < track_count; ++row) {
         const auto& person = next.persons_[row];
@@ -296,14 +304,14 @@ void PersonTracker::update(const std::vector<FaceObservation>& observations, std
             const auto feature_error = signature_distance(person.signature, candidate.signature);
             costs[row][column] = position_error > config_.max_position_distance_m ||
                 feature_error > config_.max_signature_distance ? impossible :
-                static_cast<double>(0.45L * position_error / config_.max_position_distance_m +
-                0.45L * feature_error / config_.max_signature_distance +
-                0.10L * (1.0L - overlap(person.observation.box, candidate.observation.box)));
+                static_cast<double>(TrackerConfig::position_match_weight * position_error / config_.max_position_distance_m +
+                TrackerConfig::signature_match_weight * feature_error / config_.max_signature_distance +
+                TrackerConfig::overlap_match_weight * (1.0L - overlap(person.observation.box, candidate.observation.box)));
         }
-        for (std::size_t column = candidate_count; column < count; ++column) costs[row][column] = 1.1;
+        for (std::size_t column = candidate_count; column < count; ++column) costs[row][column] = TrackerConfig::unmatched_cost;
     }
     for (std::size_t row = track_count; row < count; ++row) {
-        for (std::size_t column = 0; column < candidate_count; ++column) costs[row][column] = 1.1;
+        for (std::size_t column = 0; column < candidate_count; ++column) costs[row][column] = TrackerConfig::unmatched_cost;
     }
     const auto matches = assignment(costs);
     std::vector<bool> claimed(candidate_count, false);
