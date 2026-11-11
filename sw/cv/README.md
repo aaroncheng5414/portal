@@ -80,26 +80,16 @@ From the repository root, build:
 sudo docker build -t portal-cv sw/cv
 ```
 
-Expose the connected USB camera devices and start the API. The service tries the available video devices in numeric order and selects the first one that opens and supplies a frame:
+From the repository root, start the API with the [startup script](run.sh). It exposes the connected video devices to Docker. The service selects the first one that opens and supplies a frame:
 
 ```bash
-camera_devices=()
-for camera_device in /dev/video*; do
-  if [ -c "$camera_device" ]; then
-    camera_devices+=(--device "$camera_device")
-  fi
-done
-sudo docker run --rm --runtime=nvidia \
-  -e NVIDIA_DISABLE_REQUIRE=true \
-  "${camera_devices[@]}" -p 127.0.0.1:8080:8080 portal-cv
+bash sw/cv/run.sh
 ```
 
-To select one camera explicitly, pass its device to Docker and to the service:
+To select one camera explicitly, pass a service command through the script:
 
 ```sh
-sudo docker run --rm --runtime=nvidia \
-  -e NVIDIA_DISABLE_REQUIRE=true \
-  --device /dev/video2 -p 127.0.0.1:8080:8080 portal-cv \
+bash sw/cv/run.sh \
   ./build/portal_cv --host 0.0.0.0 --device /dev/video2
 ```
 
